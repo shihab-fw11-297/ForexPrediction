@@ -7,13 +7,15 @@ const axios = require('axios');
 const app = express();
 const port = 3000;
 
+// Cached model variable
+let cachedModel = null;
+
 // Function to fetch EUR/USD data from the Finazone API
 async function fetchForexData() {
     try {
-const FINAZON_API_URL = 'https://api.finazon.io/latest/finazon/forex/time_series?ticker=EUR/USD&interval=1m&page=0&page_size=500&apikey=18535cbd97e2400d93f96802097d83c9af';
-
+        const FINAZON_API_URL = 'https://api.finazon.io/latest/finazon/forex/time_series?ticker=EUR/USD&interval=1m&page=0&page_size=500&apikey=18535cbd97e2400d93f96802097d83c9af';
         const response = await axios.get(FINAZON_API_URL); // Replace with the actual API endpoint
-        const data =  response.data.data;// Adjust based on the actual response structure
+        const data = response.data.data; // Adjust based on the actual response structure
         return data;
     } catch (error) {
         console.error('Error fetching data from Finazone API:', error);
@@ -97,18 +99,23 @@ app.get('/predict', async (req, res) => {
         return res.status(500).json({ status: 'error', message: 'Failed to fetch forex data' });
     }
 
-    const { inputs, outputs } = prepareData(rawData);
+    // Train the model only once and reuse it
+    if (!cachedModel) {
+        const { inputs, outputs } = prepareData(rawData);
 
-    const model = buildModel();
+        // Build and train the model
+        const model = buildModel();
+        await trainModel(model, inputs, outputs);
 
-    // Ensure the model is trained before predicting
-    await trainModel(model, inputs, outputs);
+        // Cache the model
+        cachedModel = model;
+    }
 
     // Get the last 5 minutes of data for prediction
-    const last5Minutes = rawData.slice(-5);
+    const last5Minutes = rawData.slice(-35);
 
     // Make a prediction based on the latest data
-    const prediction = await predictNext5Minutes(model, last5Minutes);
+    const prediction = await predictNext5Minutes(cachedModel, last5Minutes);
 
     res.json({
         status: 'success',
